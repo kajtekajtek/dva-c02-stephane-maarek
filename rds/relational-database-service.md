@@ -148,14 +148,83 @@
 - Supported via Console (`Convert to Multi-AZ`), CLI (`modify-db-instance --multi-az`), or API (`ModifyDBInstance MultiAZ=true`)
 - Completion fires event **RDS-EVENT-0025**
 
-## Further Reading
+## RDS & Aurora Security
 
-- [Amazon RDS User Guide — What is Amazon RDS?](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Welcome.html)
-- [Managing capacity automatically with RDS Storage Autoscaling](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PIOPS.Autoscaling.html)
-- [Choosing between Amazon EC2 and Amazon RDS — AWS Prescriptive Guidance](https://docs.aws.amazon.com/prescriptive-guidance/latest/migration-sql-server/comparison.html)
-- [Working with DB instance read replicas](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ReadRepl.html)
-- [Multi-AZ DB instance deployments for Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html)
-- [Converting a DB instance to a Multi-AZ deployment](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.Migrating.html)
+**Encryption at rest**
+- Uses **AWS KMS** (AES-256); enabled at DB creation time — **cannot be enabled on a running unencrypted instance**
+- Encrypts: DB storage, automated backups, read replicas, snapshots
+- To encrypt an existing unencrypted DB: take a snapshot → copy snapshot with encryption enabled → restore from encrypted snapshot
+
+**Encryption in transit**
+- **SSL/TLS** for all engines (Db2, MySQL, MariaDB, PostgreSQL, Oracle, SQL Server)
+- Can connect to RDS Proxy via TLS 1.3 even if the underlying instance only supports an older TLS version
+- RDS Proxy certs come from **AWS Certificate Manager (ACM)** — no manual cert download needed
+
+**Network**
+- Deploy DB instances in a **VPC** (private subnets) — no public internet access by default
+- Access controlled by **Security Groups** (IP ranges or EC2 instances)
+- Use **AWS PrivateLink** (VPC Interface Endpoints) for private API calls without internet routing
+
+**Identity & Access Management**
+- **IAM policies** control who can manage RDS resources (create, modify, delete instances, tags, security groups)
+- **IAM database authentication** — authenticate to the DB using an IAM-generated auth token instead of a password; token valid **15 minutes**; no password transmitted over network; supported for **MySQL** and **PostgreSQL**
+- **Kerberos / Microsoft Active Directory** — external authentication for SQL Server, MySQL, Oracle, PostgreSQL, Db2 (not MariaDB); enables SSO + centralized credential management
+
+**Authentication methods summary**
+
+| Method | Description | Supported engines |
+| ------ | ----------- | ----------------- |
+| **Password** | DB-native user/password | All |
+| **IAM DB auth** | IAM-generated token (15 min TTL) | MySQL, PostgreSQL |
+| **Kerberos** | Active Directory / Kerberos tickets | SQL Server, MySQL, Oracle, PostgreSQL, Db2 |
+
+**Secrets Manager**
+- Integrate with **AWS Secrets Manager** to manage, rotate, and retrieve DB credentials automatically
+- Avoids hardcoded passwords in app code
+
+**Shared responsibility**
+- AWS: infrastructure, patching, backups, replication security
+- Customer: query tuning, network/security group config, IAM policies, encryption choice, in-DB user management
+
+## RDS Proxy
+
+- Fully managed **database connection proxy** between app and RDS/Aurora
+- Sits between application and DB; understands the DB protocol
+- **Serverless**, highly available, deployed across **multiple AZs**; compute independent of the DB instance
+
+**Connection pooling & multiplexing**
+- Maintains a **connection pool** — reuses existing DB connections across app requests
+- Default reuse granularity: **per transaction** (multiplexing); per statement when `autocommit=ON`
+- Reduces DB memory/CPU overhead from opening/closing many connections
+- Prevents "**too many connections**" errors by capping DB-level connections while serving more app connections
+- When pool is full: queues/throttles requests (latency may increase); sheds load if limits exceeded
+
+**Failover resilience**
+- On DB failover, RDS Proxy **preserves existing app connections** and routes to the new primary automatically
+- Eliminates DNS propagation delay / local DNS caching issues during failover
+- Reduces failover time vs direct DB connection (can cut it by up to **66%** for Aurora Multi-AZ)
+- Queues incoming requests while the new writer is being promoted
+
+**Security**
+- Enforces **IAM authentication** for client → proxy connections even if the DB uses password auth
+- Supports **standard IAM auth** (proxy → DB via Secrets Manager creds) and **end-to-end IAM auth** (no Secrets Manager needed; IAM from client to DB)
+- Always stores DB credentials in **AWS Secrets Manager**
+- TLS between client and proxy (supports TLS 1.0–1.3); can enforce `Require TLS`
+
+**Key constraints**
+- Proxy must be in the **same VPC** as the DB; **cannot be publicly accessible**
+- One proxy → one target DB instance (multiple proxies can target the same instance)
+- Default quota: **20 proxies per account** (can be increased)
+- **Pinning** — proxy falls back to per-session connection (no multiplexing) when it detects session state changes that make connection reuse unsafe; minimise pinning for best performance
+- Not supported: RDS Custom for SQL Server, VPCs with dedicated tenancy, public proxy endpoints
+
+**Supported engines:** MySQL, MariaDB, PostgreSQL, SQL Server (check Region/version matrix for specifics)
+
+**Use when:**
+- App has many short-lived connections (Lambda functions, microservices)
+- Protecting DB from connection surges
+- Wanting transparent failover for applications
+- Enforcing IAM auth without changing DB engine config
 
 ## References
 
@@ -166,4 +235,8 @@
 - [Working with DB instance read replicas](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ReadRepl.html)
 - [Multi-AZ DB instance deployments for Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html)
 - [Converting a DB instance to a Multi-AZ deployment](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.Migrating.html)
+- [Security in Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.html)
+- [Database authentication with Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/database-authentication.html)
+- [Amazon RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html)
+- [RDS Proxy concepts and terminology](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.howitworks.html)
 
