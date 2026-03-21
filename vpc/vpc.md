@@ -90,6 +90,7 @@ Summary table aligns with AWS comparison [7]:
 - Private connectivity from VPC to services and resources, as if they were in the VPC, instead of connection through the public network [13]
 - **AWS PrivateLink**: connect VPC to services as if inside the VPC; **no** IGW, NAT, public IP, Direct Connect, or Site-to-Site VPN required for that private access path [13]
 - **VPC endpoints** (interface, gateway, etc.) attach clients to PrivateLink-backed services [13]
+- Only **S3 & DynamoDB** have VPC Gateway Endpoints. All of the other services have an Interface endpoint.
 
 ## Site to Site VPN & Direct Connect
 
