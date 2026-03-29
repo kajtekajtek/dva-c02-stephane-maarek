@@ -556,37 +556,74 @@ aws cloudfront create-distribution \
 **Two types of signers (who can sign):**
 
 1. **Trusted Key Group (Recommended)**
-   - You generate public/private key pair
-   - Upload public key to CloudFront key group
-   - Applications use private key to sign URLs
-   - Rotate keys via API
-   - Better than account key pair
+   - You generate public/private key pair (RSA 2048 or ECDSA 256, PEM format)
+   - Upload public key to CloudFront
+   - Add public key to a CloudFront Key Group
+   - Applications use private key to sign URLs/cookies
+   - CloudFront uses public key to verify signatures
+   - **Managed via CloudFront API** - enables automation and key rotation
+   - **No root user required** - follows AWS best practices
+   - **IAM policies control access** - can restrict who creates/deletes keys, enforce MFA, set network/time restrictions
+   - **More flexibility** - up to 4 key groups per distribution, up to 5 public keys per key group
+   - **Better for key rotation** - can add new key, update application, then remove old key without invalidating active URLs/cookies
 
-2. **CloudFront Key Pair (Legacy)**
-   - Use root account credentials
-   - Manage via AWS console only
-   - Difficult to rotate
-   - NOT recommended
-   - Should be avoided
+2. **CloudFront Key Pair (Legacy - Not Recommended)**
+   - Requires **AWS root account credentials** to create and manage
+   - Must use **AWS Management Console** (no API automation)
+   - Management via Management Console only (cannot be automated)
+   - Limited to **2 active key pairs per AWS account**
+   - **Cannot use IAM policies** - root account full control only
+   - **Difficult to rotate** - no simultaneous key overlap capability
+   - **AWS best practice violation** - using root user for routine operations
+   - Provided for backward compatibility only
 
 **Signing process:**
+
+**Creating a Key Pair (for Trusted Key Group):**
+```bash
+# Generate RSA key pair (2048 bits)
+openssl genrsa -out private_key.pem 2048
+
+# Extract public key
+openssl rsa -pubout -in private_key.pem -out public_key.pem
+
+# For Java - convert to DER format
+openssl pkcs8 -topk8 -nocrypt -in private_key.pem -inform PEM -out private_key.der -outform DER
+```
+
+**Using the Private Key to Sign URLs:**
 ```python
 import boto3
 from botocore.signers import CloudFrontSigner
+from datetime import datetime, timedelta
 
 # Load private key
 with open('private_key.pem', 'rb') as f:
     private_key = f.read()
 
-# Create signer
-cf_signer = CloudFrontSigner(key_id='APKAJXYZ', private_key=private_key)
+# Create signer with key ID (from CloudFront console)
+cf_signer = CloudFrontSigner(
+    key_id='APKAJXYZ123456',  # Public Key ID from CloudFront
+    private_key=private_key
+)
 
-# Generate signed URL
+# Generate signed URL valid for 1 hour
 signed_url = cf_signer.generate_presigned_url(
-    url='https://d123.cloudfront.net/image.jpg',
+    url='https://d123.cloudfront.net/premium-video.mp4',
     date_less_than=datetime.utcnow() + timedelta(hours=1)
 )
+
+print(signed_url)
 ```
+
+**Key Rotation Best Practice:**
+1. Create new key pair, upload public key to CloudFront
+2. Add public key to existing key group (or create new key group)
+3. Update application to use new private key
+4. Verify signed URLs with new key are working
+5. **Wait for old URLs/cookies to expire** (important!)
+6. Remove old public key from key group
+7. Old URLs/cookies automatically fail after removal
 
 ---
 
