@@ -163,8 +163,8 @@ Step 1: [v1][v1][v1][v1]  →  Step 2: [v1][v1][v1][v1][v2][v2]  →  Step 3: [v
 Run a Fargate task in response to an AWS event (e.g., S3 object uploaded):
 
 ```
-S3 Upload → EventBridge Rule → Fargate Task
-                                └── Task Role → read S3, write DynamoDB
+S3 Upload → EventBridge Rule → AWS Fargate
+                                └── Task (new) w/ Task Role → read S3, write DynamoDB
 ```
 
 ### EventBridge — Scheduled Tasks
@@ -172,7 +172,7 @@ S3 Upload → EventBridge Rule → Fargate Task
 Run tasks on a schedule (cron-style):
 
 ```
-EventBridge Schedule (every 1 hour) → Fargate Task → process S3 data
+EventBridge Schedule (every 1 hour) → AWS Fargate → Task (new) → process S3 data
 ```
 
 ### SQS Queue Integration
